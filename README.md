@@ -34,6 +34,7 @@ import tensorflow as tf
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 ```
+
 ## 天氣數據集
 
 本教程使用由[馬克斯·普朗克生物地球化學研究所](https://www.bgc-jena.mpg.de/wetter/)記錄的[天氣時間序列數據集](https://tensorflow.google.cn/tutorials/structured_data/time_series?hl=zh_cn#%E5%A4%A9%E6%B0%94%E6%95%B0%E6%8D%AE%E9%9B%86)。
@@ -294,3 +295,186 @@ w2
 給定一個連續輸入的清單， 方法會將它們轉換為輸入視窗和標籤視窗。```split_window```
 
 您之前定義的範例 將按以下方式分割：```w2```
+
+![alt text](image-2.png)
+
+此圖不顯示數據的 軸，但此 函數還會處理 ，因此可以將其用於單輸出和多輸出樣本。```featuressplit_windowlabel_columns```
+```py
+def split_window(self, features):
+  inputs = features[:, self.input_slice, :]
+  labels = features[:, self.labels_slice, :]
+  if self.label_columns is not None:
+    labels = tf.stack(
+        [labels[:, :, self.column_indices[name]] for name in self.label_columns],
+        axis=-1)
+
+  # Slicing doesn't preserve static shape information, so set the shapes
+  # manually. This way the `tf.data.Datasets` are easier to inspect.
+  inputs.set_shape([None, self.input_width, None])
+  labels.set_shape([None, self.label_width, None])
+
+  return inputs, labels
+
+WindowGenerator.split_window = split_window
+```
+試試以下代碼：
+```py
+# Stack three slices, the length of the total window.
+example_window = tf.stack([np.array(train_df[:w2.total_window_size]),
+                           np.array(train_df[100:100+w2.total_window_size]),
+                           np.array(train_df[200:200+w2.total_window_size])])
+
+example_inputs, example_labels = w2.split_window(example_window)
+
+print('All shapes are: (batch, time, features)')
+print(f'Window shape: {example_window.shape}')
+print(f'Inputs shape: {example_inputs.shape}')
+print(f'Labels shape: {example_labels.shape}')
+```
+通常，TensorFlow 中的數據會被打包到陣列中，其中最外層索引是交叉樣本（“批次”維度）。 中間索引是“時間”和“空間”（寬度、高度）維度。 最內層索引是特徵。
+
+上面的代碼使用了三個 7 時間步驟視窗的批次，每個時間步驟有 19 個特徵。 它將其拆分成一個 6 時間步驟的批次、19 個特徵輸入和一個 1 時間步驟 1 特徵的標籤。 該標籤僅有一個特徵，因為 已使用 進行了初始化。 最初，本教程將構建預測單個輸出標籤的模型。```WindowGeneratorlabel_columns=['T (degC)']```
+
+### 3.繪圖
+下面是一個繪圖方法，可以對拆分視窗進行簡單可視化：
+```py
+w2.example = example_inputs, example_labels
+```
+```py
+def plot(self, model=None, plot_col='T (degC)', max_subplots=3):
+  inputs, labels = self.example
+  plt.figure(figsize=(12, 8))
+  plot_col_index = self.column_indices[plot_col]
+  max_n = min(max_subplots, len(inputs))
+  for n in range(max_n):
+    plt.subplot(max_n, 1, n+1)
+    plt.ylabel(f'{plot_col} [normed]')
+    plt.plot(self.input_indices, inputs[n, :, plot_col_index],
+             label='Inputs', marker='.', zorder=-10)
+
+    if self.label_columns:
+      label_col_index = self.label_columns_indices.get(plot_col, None)
+    else:
+      label_col_index = plot_col_index
+
+    if label_col_index is None:
+      continue
+
+    plt.scatter(self.label_indices, labels[n, :, label_col_index],
+                edgecolors='k', label='Labels', c='#2ca02c', s=64)
+    if model is not None:
+      predictions = model(inputs)
+      plt.scatter(self.label_indices, predictions[n, :, label_col_index],
+                  marker='X', edgecolors='k', label='Predictions',
+                  c='#ff7f0e', s=64)
+
+    if n == 0:
+      plt.legend()
+
+  plt.xlabel('Time [h]')
+
+WindowGenerator.plot = plot
+```
+此繪圖根據專案引用的時間來對齊輸入、標籤和（稍後的）預測：
+```py
+w2.plot()
+```
+您可以繪製其他列，但是樣本視窗 配置僅包含 列的標籤。```w2T (degC)```
+```py 
+w2.plot(plot_col='p (mbar)')
+```
+### 4. 創建 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn)
+
+最後，此```make_dataset```方法將獲取時間序列 DataFrame 並使用 [tf.keras.utils.timeseries_dataset_from_array](https://tensorflow.google.cn/api_docs/python/tf/keras/utils/timeseries_dataset_from_array?hl=zh-cn) 函數將其轉換為```(input_window, label_window)```對的 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn)。
+
+```py
+def make_dataset(self, data):
+  data = np.array(data, dtype=np.float32)
+  ds = tf.keras.utils.timeseries_dataset_from_array(
+      data=data,
+      targets=None,
+      sequence_length=self.total_window_size,
+      sequence_stride=1,
+      shuffle=True,
+      batch_size=32,)
+
+  ds = ds.map(self.split_window)
+
+  return ds
+
+WindowGenerator.make_dataset = make_dataset
+```
+`WindowGenerator `物件包含訓練、驗證和測試數據。
+
+使用您之前定義的 `make_dataset` 方法添加属性以作為 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn) 訪問他們。此外，添加一個標準樣本批次以便於訪問和繪圖：
+
+
+## 單步模型
+
+基於此類數據能夠構建的最簡單模型，能夠僅根據當前條件預測單個特徵的值，即未來的一個時間步驟（1 小時）。
+
+因此，從構建模型開始，預測未來 1 小時的值。T (degC)
+
+### 預測下一個時間步驟
+
+設定物件以產生下列單步對：`WindowGenerator(input, label)`
+
+```
+Total window size: 2  
+Input indices: [0]  
+Label indices: [1]  
+Label column name(s): ['T (degC)']  
+```
+
+window 會根據訓練、驗證和測試集創建，使您可以輕鬆反覆運算數據批次。`tf.data.Datasets`
+
+Inputs shape (batch, time, features): (32, 1, 19)  
+Labels shape (batch, time, features): (32, 1, 1)  
+
+### 基線
+
+在構建可訓練模型之前，最好將性能基線作為與以後更複雜的模型進行比較的點。
+
+第一個任務是在給定所有特徵的當前值的情況下，預測未來 1 小時的溫度。當前值包括當前溫度。
+
+因此，從僅返回當前溫度作為預測值的模型開始，預測“無變化”。這是一個合理的基線，因為溫度變化緩慢。當然，如果您對更遠的未來進行預測，此基線的效果就不那麼好了。
+
+#### 將輸入傳送到輸出
+
+#### 實例化並評估此模型：
+```
+439/439 [==============================] - 1s 2ms/step - loss: 0.0128 - mean_absolute_error: 0.0785
+```
+
+上面的代碼列印了一些性能指標，但這些指標並沒有使您對模型的運行情況有所瞭解。
+
+`WindowGenerator` 有一種繪製方法，但只有一個樣本，繪圖不是很有趣。
+
+因此，創建一個更寬的來一次生成包含 24 小時連續輸入和標籤的視窗。新的變數不會更改模型的運算方式。模型仍會根據單個輸入時間步驟對未來 1 小時進行預測。這裡 `window` 軸的作用類似於 `time` 軸：每個預測都是獨立進行的，時間步驟之間沒有交互：
+``
+Total window size: 25  
+Input indices: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23]  
+Label indices: [ 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24]  
+Label column name(s): ['T (degC)']
+``
+#### 對未來 1 小時進行一次預測，每小時一次
+
+Input shape: (32, 24, 19)  
+Output shape: (32, 24, 1)  
+
+通過繪製基線模型的預測值，可以注意到只是標籤向右移動了 1 小時：
+
+
+
+#### 線性模型
+
+可以應用於此任務的最簡單的可訓練模型是在輸入和輸出之間插入線性轉換。在這種情況下，時間步驟的輸出僅取決於該步驟：
+
+沒有設置 `activation` 的 `tf.keras.layers.Dense` 層是線性模型。層僅會將數據的最後一個軸從 `(batch, time, inputs)` 轉換為 `(batch, time, units)`；它會單獨應用於 `batch` 和 `time` 軸的每個條目。
+
+#### 訓練過程函數
+
+本教程訓練許多模型，因此將訓練過程打包到一個函數中：
+
+#### 訓練模型並評估其性能
+
