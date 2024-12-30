@@ -1,7 +1,7 @@
-# ai_final_project
+# AI Final Project
 # 使用 TensorFlow 進行時間序列預測
 
-本教程是使用 TensorFlow 進行時間序列預測的簡介。它構建了幾種不同樣式的模型，包括卷積神經網路 （CNN） 和循環神經網路 （RNN）。
+本教程是使用 TensorFlow 進行時間序列預測的簡介。它構建了幾種不同樣式的模型，包括卷積神經網路（CNN）和循環神經網路（RNN）。
 
 ## 本教程包括兩個主要部分，每個部分包含若干小節：
 
@@ -16,3 +16,10 @@
 #### 單次：一次做出所有預測
 
 #### 自回歸：一次做出一個預測，並將輸出饋送回模型
+
+## 天氣數據集
+
+本教程使用由馬克斯·普朗克生物地球化學研究所記錄的[天氣時間序列數據集](https://tensorflow.google.cn/tutorials/structured_data/time_series?hl=zh_cn#%E5%A4%A9%E6%B0%94%E6%95%B0%E6%8D%AE%E9%9B%86)。
+
+此數據集包含了 14 個不同特徵，例如氣溫、氣壓和濕度。 自 2003 年起，這些數據每 10 分鐘就會被收集一次。為了提高效率，您將僅使用 2009 至 2016 年之間收集的數據。數據集的這一部分由 François Chollet 為他的《Deep Learning with Python》一書所準備。
+
