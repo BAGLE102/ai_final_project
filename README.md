@@ -34,6 +34,7 @@ import tensorflow as tf
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 ```
+![圖片](pic/001.png)
 
 ## 天氣數據集
 
