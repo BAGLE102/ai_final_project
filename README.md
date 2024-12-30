@@ -41,6 +41,8 @@ mpl.rcParams['axes.grid'] = False
 本教程使用由[馬克斯·普朗克生物地球化學研究所](https://www.bgc-jena.mpg.de/wetter/)記錄的[天氣時間序列數據集](https://tensorflow.google.cn/tutorials/structured_data/time_series?hl=zh_cn#%E5%A4%A9%E6%B0%94%E6%95%B0%E6%8D%AE%E9%9B%86)。
 
 此數據集包含了 14 個不同特徵，例如氣溫、氣壓和濕度。 自 2003 年起，這些數據每 10 分鐘就會被收集一次。為了提高效率，您將僅使用 2009 至 2016 年之間收集的數據。數據集的這一部分由 François Chollet 為他的[《Deep Learning with Python》](https://www.manning.com/books/deep-learning-with-python)一書所準備。
+
+![圖片](pic/002.png)
 ```py
 zip_path = tf.keras.utils.get_file(
     origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
@@ -61,6 +63,14 @@ date_time = pd.to_datetime(df.pop('Date Time'), format='%d.%m.%Y %H:%M:%S')
 ```py
 df.head()
 ```
+| p (mbar) | T (degC) | Tpot (K) | Tdew (degC) | rh (%) | VPmax (mbar) | VPact (mbar) | VPdef (mbar) | sh (g/kg) | H2OC (mmol/mol) | rho (g/m**3) | wv (m/s) | max. wv (m/s) | wd (deg) |
+| -------- | -------- | -------- | ----------- | ------ | ------------ | ------------ | ------------ | --------- | --------------- | ------------ | -------- | ------------- | -------- |
+| 996.50   | -8.05    | 265.38   | -8.78       | 94.4   | 3.33         | 3.14         | 0.19         | 1.96      | 3.15            | 1307.86      | 0.21     | 0.63          | 192.7    |
+| 996.62   | -8.88    | 264.54   | -9.77       | 93.2   | 3.12         | 2.90         | 0.21         | 1.81      | 2.91            | 1312.25      | 0.25     | 0.63          | 190.3    |
+| 996.84   | -8.81    | 264.59   | -9.66       | 93.5   | 3.13         | 2.93         | 0.20         | 1.83      | 2.94            | 1312.18      | 0.18     | 0.63          | 167.2    |
+| 996.99   | -9.05    | 264.34   | -10.02      | 92.6   | 3.07         | 2.85         | 0.23         | 1.78      | 2.85            | 1313.61      | 0.10     | 0.38          | 240.0    |
+| 997.46   | -9.63    | 263.72   | -10.65      | 92.2   | 2.94         | 2.71         | 0.23         | 1.69      | 2.71            | 1317.19      | 0.40     | 0.88          | 157.0    |
+
 下面是一些特徵隨時間的演變：
 ```py
 plot_cols = ['T (degC)', 'p (mbar)', 'rho (g/m**3)']
@@ -77,6 +87,23 @@ _ = plot_features.plot(subplots=True)
 ```py
 df.describe().transpose()
 ```
+| 測量項目       | 計數       | 平均值      | 標準差      | 最小值      | 25百分位值 | 50百分位值 | 75百分位值 | 最大值      |
+| ------------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- |
+| p (mbar)      | 70091.0   | 989.212842| 8.358886  | 913.60    | 984.20    | 989.57    | 994.720   | 1015.29   |
+| T (degC)      | 70091.0   | 9.450482  | 8.423384  | -22.76    | 3.35      | 9.41      | 15.480    | 37.28     |
+| Tpot (K)      | 70091.0   | 283.493086| 8.504424  | 250.85    | 277.44    | 283.46    | 289.530   | 311.21    |
+| Tdew (degC)   | 70091.0   | 4.956471  | 6.730081  | -24.80    | 0.24      | 5.21      | 10.080    | 23.06     |
+| rh (%)        | 70091.0   | 76.009788 | 16.474920 | 13.88     | 65.21     | 79.30     | 89.400    | 100.00    |
+| VPmax (mbar)  | 70091.0   | 13.576576 | 7.739883  | 0.97      | 7.77      | 11.82     | 17.610    | 63.77     |
+| VPact (mbar)  | 70091.0   | 9.533968  | 4.183658  | 0.81      | 6.22      | 8.86      | 12.360    | 28.25     |
+| VPdef (mbar)  | 70091.0   | 4.042536  | 4.898549  | 0.00      | 0.87      | 2.19      | 5.300     | 46.01     |
+| sh (g/kg)     | 70091.0   | 6.022560  | 2.655812  | 0.51      | 3.92      | 5.59      | 7.800     | 18.07     |
+| H2OC (mmol/mol)| 70091.0  | 9.640437  | 4.234862  | 0.81      | 6.29      | 8.96      | 12.490    | 28.74     |
+| rho (g/m**3)  | 70091.0   | 1216.061232 | 39.974263| 1059.45   | 1187.47   | 1213.80   | 1242.765  | 1393.54   |
+| wv (m/s)      | 70091.0   | 1.702567  | 65.447512 | -9999.00  | 0.99      | 1.76      | 2.860     | 14.01     |
+| max. wv (m/s) | 70091.0   | 2.963041  | 75.597657 | -9999.00  | 1.76      | 2.98      | 4.740     | 23.50     |
+| wd (deg)      | 70091.0   | 174.789095| 86.619431 | 0.00      | 125.30    | 198.10    | 234.000   | 360.00    |
+
 ### 風速
 值得注意的一件事是風速 （） 的 值和最大值 （） 列。 這個可能是錯誤的。``` wv (m/s)minmax. wv (m/s)-9999 ```
 
@@ -416,7 +443,7 @@ WindowGenerator.make_dataset = make_dataset
 
 因此，從構建模型開始，預測未來 1 小時的值。T (degC)
 
-### 預測下一個時間步驟
+#### 預測下一個時間步驟
 
 設定物件以產生下列單步對：`WindowGenerator(input, label)`
 
@@ -444,7 +471,37 @@ Labels shape (batch, time, features): (32, 1, 1)
 
 #### 實例化並評估此模型：
 ```
-439/439 [==============================] - 1s 2ms/step - loss: 0.0128 - mean_absolute_error: 0.0785
+Epoch 1/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 4ms/step - loss: 0.4903 - mean_absolute_error: 0.4637 - val_loss: 0.0191 - val_mean_absolute_error: 0.1003
+Epoch 2/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 12s 5ms/step - loss: 0.0146 - mean_absolute_error: 0.0894 - val_loss: 0.0096 - val_mean_absolute_error: 0.0727
+Epoch 3/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0097 - mean_absolute_error: 0.0724 - val_loss: 0.0092 - val_mean_absolute_error: 0.0705
+Epoch 4/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 4ms/step - loss: 0.0093 - mean_absolute_error: 0.0708 - val_loss: 0.0089 - val_mean_absolute_error: 0.0693
+Epoch 5/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 5ms/step - loss: 0.0093 - mean_absolute_error: 0.0705 - val_loss: 0.0090 - val_mean_absolute_error: 0.0696
+Epoch 6/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0092 - mean_absolute_error: 0.0702 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 7/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 4ms/step - loss: 0.0092 - mean_absolute_error: 0.0700 - val_loss: 0.0088 - val_mean_absolute_error: 0.0691
+Epoch 8/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 9s 6ms/step - loss: 0.0092 - mean_absolute_error: 0.0701 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 9/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0699 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 10/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0698 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 11/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0698 - val_loss: 0.0087 - val_mean_absolute_error: 0.0685
+Epoch 12/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 10s 4ms/step - loss: 0.0091 - mean_absolute_error: 0.0697 - val_loss: 0.0087 - val_mean_absolute_error: 0.0678
+Epoch 13/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 14/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 15/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0684
+439/439 ━━━━━━━━━━━━━━━━━━━━ 1s 3ms/step - loss: 0.0087 - mean_absolute_error: 0.0684
 ```
 
 上面的代碼列印了一些性能指標，但這些指標並沒有使您對模型的運行情況有所瞭解。
