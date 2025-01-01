@@ -938,4 +938,312 @@ for name, value in performance.items():
 
 ## 多步模型
 
+前几个部分中的单输出和多输出模型都对未来 1 小时进行**单个时间步骤预测**。
+本部分介绍如何扩展这些模型以进行**多时间步骤预测**。
+在多步预测中，模型需要学习预测一系列未来值。因此，与单步模型（仅预测单个未来点）不同，多步模型预测未来值的序列。
 
+大致有两种预测方法：
+
+1. 单次预测，一次预测整个时间序列。
+1. 自回归预测，模型仅进行单步预测并将输出作为输入进行反馈。
+
+在本部分中，所有模型都将预测**所有输出时间步骤中的所有特征**。
+
+对于多步模型而言，训练数据仍由每小时样本组成。但是，在这里，模型将在给定过去 24 小时的情况下学习预测未来 24 小时。
+
+下面是一个 `Window`对象，该对象从数据集生成以下切片：
+```py
+OUT_STEPS = 24
+multi_window = WindowGenerator(input_width=24,
+                               label_width=OUT_STEPS,
+                               shift=OUT_STEPS)
+
+multi_window.plot()
+multi_window
+```
+
+### 基线
+此任务的一个简单基线是针对所需数量的输出时间步骤重复上一个输入时间步骤：
+```py 
+class MultiStepLastBaseline(tf.keras.Model):
+  def call(self, inputs):
+    return tf.tile(inputs[:, -1:, :], [1, OUT_STEPS, 1])
+
+last_baseline = MultiStepLastBaseline()
+last_baseline.compile(loss=tf.keras.losses.MeanSquaredError(),
+                      metrics=[tf.keras.metrics.MeanAbsoluteError()])
+
+multi_val_performance = {}
+multi_performance = {}
+
+multi_val_performance['Last'] = last_baseline.evaluate(multi_window.val)
+multi_performance['Last'] = last_baseline.evaluate(multi_window.test, verbose=0)
+multi_window.plot(last_baseline)
+```
+
+由于此任务是在给定过去 24 小时的情况下预测未来 24 小时，另一种简单的方式是重复前一天，假设明天是类似的：
+
+
+```py 
+class RepeatBaseline(tf.keras.Model):
+  def call(self, inputs):
+    return inputs
+
+repeat_baseline = RepeatBaseline()
+repeat_baseline.compile(loss=tf.keras.losses.MeanSquaredError(),
+                        metrics=[tf.keras.metrics.MeanAbsoluteError()])
+
+multi_val_performance['Repeat'] = repeat_baseline.evaluate(multi_window.val)
+multi_performance['Repeat'] = repeat_baseline.evaluate(multi_window.test, verbose=0)
+multi_window.plot(repeat_baseline)
+```
+
+### 单次模型
+
+解决此问题的一种高级方法是使用“单次”模型，该模型可以在单个步骤中对整个序列进行预测。
+
+这可以使用 `OUT_STEPS*features` 输出单元作为 `tf.keras.layers.Dense` 高效实现。模型只需要将输出调整为所需的 `(OUTPUT_STEPS, features)`。
+
+### 线性
+
+基于最后输入时间步骤的简单线性模型优于任何基线，但能力不足。该模型需要根据线性投影的单个输入时间步骤来预测 `OUTPUT_STEPS` 个时间步骤。它只能捕获行为的低维度切片，可能主要基于一天中的时间和一年中的时间。
+
+```py 
+multi_linear_model = tf.keras.Sequential([
+    # Take the last time-step.
+    # Shape [batch, time, features] => [batch, 1, features]
+    tf.keras.layers.Lambda(lambda x: x[:, -1:, :]),
+    # Shape => [batch, 1, out_steps*features]
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros()),
+    # Shape => [batch, out_steps, features]
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+])
+
+history = compile_and_fit(multi_linear_model, multi_window)
+
+IPython.display.clear_output()
+multi_val_performance['Linear'] = multi_linear_model.evaluate(multi_window.val)
+multi_performance['Linear'] = multi_linear_model.evaluate(multi_window.test, verbose=0)
+multi_window.plot(multi_linear_model)
+```
+
+### 密集
+
+在输入和输出之间添加 `tf.keras.layers.Dense` 可为线性模型提供更大能力，但仍仅基于单个输入时间步骤。
+
+```py 
+multi_dense_model = tf.keras.Sequential([
+    # Take the last time step.
+    # Shape [batch, time, features] => [batch, 1, features]
+    tf.keras.layers.Lambda(lambda x: x[:, -1:, :]),
+    # Shape => [batch, 1, dense_units]
+    tf.keras.layers.Dense(512, activation='relu'),
+    # Shape => [batch, out_steps*features]
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros()),
+    # Shape => [batch, out_steps, features]
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+])
+
+history = compile_and_fit(multi_dense_model, multi_window)
+
+IPython.display.clear_output()
+multi_val_performance['Dense'] = multi_dense_model.evaluate(multi_window.val)
+multi_performance['Dense'] = multi_dense_model.evaluate(multi_window.test, verbose=0)
+multi_window.plot(multi_dense_model)
+```
+
+### CNN
+卷积模型基于固定宽度的历史记录进行预测，可能比密集模型的性能更好，因为它可以看到随时间变化的情况：
+```py 
+CONV_WIDTH = 3
+multi_conv_model = tf.keras.Sequential([
+    # Shape [batch, time, features] => [batch, CONV_WIDTH, features]
+    tf.keras.layers.Lambda(lambda x: x[:, -CONV_WIDTH:, :]),
+    # Shape => [batch, 1, conv_units]
+    tf.keras.layers.Conv1D(256, activation='relu', kernel_size=(CONV_WIDTH)),
+    # Shape => [batch, 1,  out_steps*features]
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros()),
+    # Shape => [batch, out_steps, features]
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+])
+
+history = compile_and_fit(multi_conv_model, multi_window)
+
+IPython.display.clear_output()
+
+multi_val_performance['Conv'] = multi_conv_model.evaluate(multi_window.val)
+multi_performance['Conv'] = multi_conv_model.evaluate(multi_window.test, verbose=0)
+multi_window.plot(multi_conv_model)
+```
+### RNN
+
+如果循环模型与模型所做的预测相关，则可以学习使用较长的输入历史记录。在这里，模型将积累 24 小时的内部状态，然后对接下来的 24 小时进行单次预测。
+
+在此单次格式中，LSTM 只需要在最后一个时间步骤上生成输出，因此在 `tf.keras.layers.LSTM `中设置 `return_sequences=False`。
+
+```py 
+multi_lstm_model = tf.keras.Sequential([
+    # Shape [batch, time, features] => [batch, lstm_units].
+    # Adding more `lstm_units` just overfits more quickly.
+    tf.keras.layers.LSTM(32, return_sequences=False),
+    # Shape => [batch, out_steps*features].
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros()),
+    # Shape => [batch, out_steps, features].
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+])
+
+history = compile_and_fit(multi_lstm_model, multi_window)
+
+IPython.display.clear_output()
+
+multi_val_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.val)
+multi_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.test, verbose=0)
+multi_window.plot(multi_lstm_model)
+```
+### 高级：自回归模型
+上述模型均在单个步骤中预测整个输出序列。
+
+在某些情况下，模型将此预测分解为单个时间步骤可能比较有帮助。 然后，模型的每个输出都可以在每个步骤反馈给自己，并可以根据前一个输出进行预测，就像经典的[使用循环神经网络生成序列](https://arxiv.org/abs/1308.0850)中介绍的一样。
+
+此类模型的一个明显优势是可以将其设置为生成长度不同的输出。
+
+您可以采用本教程前半部分中训练的任意一个单步多输出模型，并在自回归反馈循环中运行，但是在这里，您将重点关注经过显式训练的模型。
+
+### RNN
+
+本教程仅构建自回归 RNN 模型，但是该模式可以应用于设计为输出单个时间步骤的任何模型。
+
+模型将具有与之前的单步 LSTM 模型相同的基本形式：一个 [tf.keras.layers.LSTM](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/LSTM?hl=zh-cn) ，后接一个将 LSTM 层输出转换为模型预测的 [tf.keras.layers.Dense](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/Dense?hl=zh-cn) 层。
+
+[tf.keras.layers.LSTM](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/LSTM?hl=zh-cn) 是封装在更高级 [tf.keras.layers.RNN](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/RNN?hl=zh-cn) 中的 [tf.keras.layers.LSTMCell](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/LSTMCell?hl=zh-cn)，它为您管理状态和序列结果（有关详细信息，请参阅[使用 Keras 的循环神经网络 (RNN)](https://tensorflow.google.cn/guide/keras/rnn?hl=zh-cn) 指南）。
+
+在这种情况下，模型必须手动管理每个步骤的输入，因此它直接将 [tf.keras.layers.LSTMCell](https://tensorflow.google.cn/api_docs/python/tf/keras/layers/LSTMCell?hl=zh-cn) 用于较低级别的单个时间步骤接口。
+
+```py
+class FeedBack(tf.keras.Model):
+  def __init__(self, units, out_steps):
+    super().__init__()
+    self.out_steps = out_steps
+    self.units = units
+    self.lstm_cell = tf.keras.layers.LSTMCell(units)
+    # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
+    self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell, return_state=True)
+    self.dense = tf.keras.layers.Dense(num_features)
+```
+```py 
+feedback_model = FeedBack(units=32, out_steps=OUT_STEPS)
+```
+该模型需要的第一个方法是 `warmup`，用来根据输入初始化其内部状态。训练后，此状态将捕获输入历史记录的相关部分。这等效于先前的单步 `LSTM` 模型：
+
+```py
+def warmup(self, inputs):
+  # inputs.shape => (batch, time, features)
+  # x.shape => (batch, lstm_units)
+  x, *state = self.lstm_rnn(inputs)
+
+  # predictions.shape => (batch, features)
+  prediction = self.dense(x)
+  return prediction, state
+
+FeedBack.warmup = warmup
+```
+此方法返回单个时间步骤预测以及 `LSTM `的内部状态：
+
+```py 
+prediction, state = feedback_model.warmup(multi_window.example[0])
+prediction.shape
+```
+
+有了 `RNN` 的状态和初始预测，您现在可以继续迭代模型，并在每一步将预测作为输入反馈给模型。
+
+收集输出预测的最简单方式是使用 Python 列表，并在循环后使用 [tf.stack](https://tensorflow.google.cn/api_docs/python/tf/stack?hl=zh-cn)。
+
+注：像这样堆叠 Python 列表仅适用于 Eager-Execution，使用 [Model.compile(..., run_eagerly=True)](https://tensorflow.google.cn/api_docs/python/tf/keras/Model?hl=zh-cn#compile) 进行训练，或使用固定长度的输出。对于动态输出长度，您需要使用 [tf.TensorArray](https://tensorflow.google.cn/api_docs/python/tf/TensorArray?hl=zh-cn) 代替 Python 列表，并用 [tf.range](https://tensorflow.google.cn/api_docs/python/tf/range?hl=zh-cn) 代替 Python range。
+
+```py 
+def call(self, inputs, training=None):
+  # Use a TensorArray to capture dynamically unrolled outputs.
+  predictions = []
+  # Initialize the LSTM state.
+  prediction, state = self.warmup(inputs)
+
+  # Insert the first prediction.
+  predictions.append(prediction)
+
+  # Run the rest of the prediction steps.
+  for n in range(1, self.out_steps):
+    # Use the last prediction as input.
+    x = prediction
+    # Execute one lstm step.
+    x, state = self.lstm_cell(x, states=state,
+                              training=training)
+    # Convert the lstm output to a prediction.
+    prediction = self.dense(x)
+    # Add the prediction to the output.
+    predictions.append(prediction)
+
+  # predictions.shape => (time, batch, features)
+  predictions = tf.stack(predictions)
+  # predictions.shape => (batch, time, features)
+  predictions = tf.transpose(predictions, [1, 0, 2])
+  return predictions
+
+FeedBack.call = call
+```
+
+在示例输入上运行此模型：
+```py
+print('Output shape (batch, time, features): ', feedback_model(multi_window.example[0]).shape)
+```
+现在，训练模型：
+```py 
+history = compile_and_fit(feedback_model, multi_window)
+
+IPython.display.clear_output()
+
+multi_val_performance['AR LSTM'] = feedback_model.evaluate(multi_window.val)
+multi_performance['AR LSTM'] = feedback_model.evaluate(multi_window.test, verbose=0)
+multi_window.plot(feedback_model)
+```
+### 性能
+在这个问题上，作为模型复杂性的函数，返回值在明显递减。
+```py 
+x = np.arange(len(multi_performance))
+width = 0.3
+
+metric_name = 'mean_absolute_error'
+metric_index = lstm_model.metrics_names.index('mean_absolute_error')
+val_mae = [v[metric_index] for v in multi_val_performance.values()]
+test_mae = [v[metric_index] for v in multi_performance.values()]
+
+plt.bar(x - 0.17, val_mae, width, label='Validation')
+plt.bar(x + 0.17, test_mae, width, label='Test')
+plt.xticks(ticks=x, labels=multi_performance.keys(),
+           rotation=45)
+plt.ylabel(f'MAE (average over all times and outputs)')
+_ = plt.legend()
+```
+
+本教程前半部分的多输出模型的指标显示了所有输出特征的平均性能。这些性能类似，但在输出时间步骤上也进行了平均。
+
+```py 
+for name, value in multi_performance.items():
+  print(f'{name:8s}: {value[1]:0.4f}')
+```
+
+从密集模型到卷积模型和循环模型，所获得的增益只有百分之几（如果有的话），而自回归模型的表现显然更差。因此，在**这个**问题上使用这些更复杂的方法可能并不值得，但如果不尝试就无从知晓，而且这些模型可能会对**您的**问题有所帮助。
+
+## 后续步骤
+
+本教程是使用 TensorFlow 进行时间序列预测的简单介绍。
+
+要了解更多信息，请参阅：
+
+- [Hands-on Machine Learning with Scikit-Learn, Keras, and TensorFlow](https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/)（第 2 版）第 15 章。
+- [Python 深度学习](https://www.manning.com/books/deep-learning-with-python)第 6 章。
+- [Udacity 的 Intro to TensorFlow for deep learning](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187) 第 8 课，包括[练习笔记本](https://github.com/tensorflow/examples/tree/master/courses/udacity_intro_to_tensorflow_for_deep_learning)。
+还要记住，您可以在 TensorFlow 中实现任何[经典时间序列模型](https://otexts.com/fpp2/index.html)，本教程仅重点介绍了 TensorFlow 的内置功能。
