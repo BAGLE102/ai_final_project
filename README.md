@@ -82,6 +82,9 @@ plot_features = df[plot_cols][:480]
 plot_features.index = date_time[:480]
 _ = plot_features.plot(subplots=True)
 ```
+
+![圖片](pic/004.png)
+![圖片](pic/074.png)
 ### 檢查和清理
  接下來，看一下數據集的統計數據：
 ```py
@@ -120,6 +123,9 @@ max_wv[bad_max_wv] = 0.0
 # The above inplace edits are reflected in the DataFrame.
 df['wv (m/s)'].min()
 ```
+
+![圖片](pic/005.png)
+
 ### 特徵工程
 在潛心構建模型之前，務必瞭解數據並確保傳遞格式正確的數據。
 
@@ -133,6 +139,7 @@ plt.colorbar()
 plt.xlabel('Wind Direction [deg]')
 plt.ylabel('Wind Velocity [m/s]')
 ```
+![圖片](pic/006.png)
 
 但是，如果將風向和風速列轉換為風向量，模型將更容易解釋：
 
@@ -160,6 +167,8 @@ plt.ylabel('Wind Y [m/s]')
 ax = plt.gca()
 ax.axis('tight')
 ```
+
+![圖片](pic/007.png)
 ### 時間
 同樣， 列非常有用，但不是以這種字串形式。 首先將其轉換為秒：```Date Time```
 ```py
@@ -183,6 +192,9 @@ plt.plot(np.array(df['Day cos'])[:25])
 plt.xlabel('Time [h]')
 plt.title('Time of day signal')
 ```
+
+![圖片](pic/008.png)
+
 這使模型能夠訪問最重要的頻率特徵。 在這種情況下，您提前知道了哪些頻率很重要。
 
 如果您沒有該資訊，則可以通過使用快速傅里葉變換提取特徵來確定哪些頻率重要。 要檢驗假設，下面是溫度隨時間變化的 tf.signal.rfft。 請注意 和 附近頻率的明顯峰值：```1/year1/day```
@@ -203,7 +215,7 @@ plt.xlim([0.1, max(plt.xlim())])
 plt.xticks([1, 365.2524], labels=['1/Year', '1/day'])
 _ = plt.xlabel('Frequency (log scale)')
 ```
-
+![圖片](pic/009.png)
 ### 拆分數據
 您將使用 拆分出訓練集、驗證集和測試集。 請注意，在拆分前數據**沒有**隨機打亂順序。 這有兩個原因：```(70%, 20%, 10%)```
 1. 確保仍然可以將數據切入連續樣本的視窗
@@ -241,6 +253,7 @@ plt.figure(figsize=(12, 6))
 ax = sns.violinplot(x='Column', y='Normalized', data=df_std)
 _ = ax.set_xticklabels(df.keys(), rotation=90)
 ```
+![圖片](pic/010.png)
 ## 數據視窗化
 本教程中的模型將基於來自數據連續樣本的窗口進行一組預測。
 
@@ -255,9 +268,9 @@ _ = ax.set_xticklabels(df.keys(), rotation=90)
 
 根據任務和模型類型，您可能需要生成各種資料視窗。 下面是一些範例：
 1. 例如，要在給定 24 小時歷史記錄的情況下對未來 24 小時作出一次預測，可以定義如下視窗：
-![alt text](image.png)
+![圖片](pic/011.png)
 1. 給定 6 小時的歷史記錄，對未來 1 小時作出一次預測的模型將需要類似下面的視窗：
-![alt text](image-1.png)
+![圖片](pic/012.png)
 
 本部分的剩餘內容會定義 類。 此類可以：```WindowGenerator```
 1. 處理如上圖所示的索引和偏移量。
@@ -314,17 +327,19 @@ w1 = WindowGenerator(input_width=24, label_width=1, shift=24,
                      label_columns=['T (degC)'])
 w1
 ```
+![圖片](pic/013.png)
 ```py
 w2 = WindowGenerator(input_width=6, label_width=1, shift=1,
                      label_columns=['T (degC)'])
 w2
 ```
+![圖片](pic/014.png)
 ### 2. 拆分
-給定一個連續輸入的清單， 方法會將它們轉換為輸入視窗和標籤視窗。```split_window```
+給定一個連續輸入的清單，```split_window``` 方法會將它們轉換為輸入視窗和標籤視窗。
 
-您之前定義的範例 將按以下方式分割：```w2```
+您之前定義的範例```w2``` 將按以下方式分割：
 
-![alt text](image-2.png)
+![圖片](pic/015.png)
 
 此圖不顯示數據的 軸，但此 函數還會處理 ，因此可以將其用於單輸出和多輸出樣本。```featuressplit_windowlabel_columns```
 ```py
@@ -359,6 +374,8 @@ print(f'Window shape: {example_window.shape}')
 print(f'Inputs shape: {example_inputs.shape}')
 print(f'Labels shape: {example_labels.shape}')
 ```
+
+![圖片](pic/016.png)
 通常，TensorFlow 中的數據會被打包到陣列中，其中最外層索引是交叉樣本（“批次”維度）。 中間索引是“時間”和“空間”（寬度、高度）維度。 最內層索引是特徵。
 
 上面的代碼使用了三個 7 時間步驟視窗的批次，每個時間步驟有 19 個特徵。 它將其拆分成一個 6 時間步驟的批次、19 個特徵輸入和一個 1 時間步驟 1 特徵的標籤。 該標籤僅有一個特徵，因為 已使用 進行了初始化。 最初，本教程將構建預測單個輸出標籤的模型。```WindowGeneratorlabel_columns=['T (degC)']```
@@ -403,14 +420,17 @@ def plot(self, model=None, plot_col='T (degC)', max_subplots=3):
 
 WindowGenerator.plot = plot
 ```
+
 此繪圖根據專案引用的時間來對齊輸入、標籤和（稍後的）預測：
 ```py
 w2.plot()
 ```
+![圖片](pic/017.png)
 您可以繪製其他列，但是樣本視窗 配置僅包含 列的標籤。```w2T (degC)```
 ```py 
 w2.plot(plot_col='p (mbar)')
 ```
+![圖片](pic/018.png)
 ### 4. 創建 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn)
 
 最後，此```make_dataset```方法將獲取時間序列 DataFrame 並使用 [tf.keras.utils.timeseries_dataset_from_array](https://tensorflow.google.cn/api_docs/python/tf/keras/utils/timeseries_dataset_from_array?hl=zh-cn) 函數將其轉換為```(input_window, label_window)```對的 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn)。
@@ -435,27 +455,72 @@ WindowGenerator.make_dataset = make_dataset
 `WindowGenerator `物件包含訓練、驗證和測試數據。
 
 使用您之前定義的 `make_dataset` 方法添加属性以作為 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn) 訪問他們。此外，添加一個標準樣本批次以便於訪問和繪圖：
+```py
+@property
+def train(self):
+  return self.make_dataset(self.train_df)
 
+@property
+def val(self):
+  return self.make_dataset(self.val_df)
 
+@property
+def test(self):
+  return self.make_dataset(self.test_df)
+
+@property
+def example(self):
+  """Get and cache an example batch of `inputs, labels` for plotting."""
+  result = getattr(self, '_example', None)
+  if result is None:
+    # No example batch was found, so get one from the `.train` dataset
+    result = next(iter(self.train))
+    # And cache it for next time
+    self._example = result
+  return result
+
+WindowGenerator.train = train
+WindowGenerator.val = val
+WindowGenerator.test = test
+WindowGenerator.example = example
+```
+现在，`WindowGenerator` 对象允许您访问 [tf.data.Dataset](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn) 对象，因此您可以轻松迭代数据。
+[Dataset.element_spec](https://tensorflow.google.cn/api_docs/python/tf/data/Dataset?hl=zh-cn#element_spec) 属性会告诉您数据集元素的结构、数据类型和形状。
+```py
+# Each element is an (inputs, label) pair.
+w2.train.element_spec
+```
+![圖片](pic/019.png)
+在 `Dataset` 上进行迭代会产生具体批次：
+```py
+for example_inputs, example_labels in w2.train.take(1):
+  print(f'Inputs shape (batch, time, features): {example_inputs.shape}')
+  print(f'Labels shape (batch, time, features): {example_labels.shape}')
+  ```
+![圖片](pic/020.png)
 ## 單步模型
 
 基於此類數據能夠構建的最簡單模型，能夠僅根據當前條件預測單個特徵的值，即未來的一個時間步驟（1 小時）。
 
-因此，從構建模型開始，預測未來 1 小時的值。T (degC)
-
+因此，從構建模型開始，預測未來 1 小時的`T (degC)`值。
+![圖片](pic/021.png)
 #### 預測下一個時間步驟
 
-設定物件以產生下列單步對：`WindowGenerator(input, label)`
-
+設定物件`WindowGenerator`以產生下列單步`(input, label)`對：
+```py
+single_step_window = WindowGenerator(
+    input_width=1, label_width=1, shift=1,
+    label_columns=['T (degC)'])
+single_step_window
 ```
-Total window size: 2  
-Input indices: [0]  
-Label indices: [1]  
-Label column name(s): ['T (degC)']  
-```
-
-window 會根據訓練、驗證和測試集創建，使您可以輕鬆反覆運算數據批次。`tf.data.Datasets`
-
+![圖片](pic/022.png)
+window 會根據訓練、驗證和測試集創建`tf.data.Datasets`，使您可以輕鬆反覆運算數據批次。
+```py
+for example_inputs, example_labels in single_step_window.train.take(1):
+  print(f'Inputs shape (batch, time, features): {example_inputs.shape}')
+  print(f'Labels shape (batch, time, features): {example_labels.shape}')
+  ```
+![圖片](pic/023.png)
 Inputs shape (batch, time, features): (32, 1, 19)  
 Labels shape (batch, time, features): (32, 1, 1)  
 
