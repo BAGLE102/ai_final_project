@@ -503,7 +503,9 @@ for example_inputs, example_labels in w2.train.take(1):
 基於此類數據能夠構建的最簡單模型，能夠僅根據當前條件預測單個特徵的值，即未來的一個時間步驟（1 小時）。
 
 因此，從構建模型開始，預測未來 1 小時的`T (degC)`值。
+
 ![圖片](pic/021.png)
+
 #### 預測下一個時間步驟
 
 設定物件`WindowGenerator`以產生下列單步`(input, label)`對：
@@ -514,6 +516,7 @@ single_step_window = WindowGenerator(
 single_step_window
 ```
 ![圖片](pic/022.png)
+
 window 會根據訓練、驗證和測試集創建`tf.data.Datasets`，使您可以輕鬆反覆運算數據批次。
 ```py
 for example_inputs, example_labels in single_step_window.train.take(1):
@@ -521,8 +524,7 @@ for example_inputs, example_labels in single_step_window.train.take(1):
   print(f'Labels shape (batch, time, features): {example_labels.shape}')
   ```
 ![圖片](pic/023.png)
-Inputs shape (batch, time, features): (32, 1, 19)  
-Labels shape (batch, time, features): (32, 1, 1)  
+
 
 ### 基線
 
@@ -531,9 +533,7 @@ Labels shape (batch, time, features): (32, 1, 1)
 第一個任務是在給定所有特徵的當前值的情況下，預測未來 1 小時的溫度。當前值包括當前溫度。
 
 因此，從僅返回當前溫度作為預測值的模型開始，預測“無變化”。這是一個合理的基線，因為溫度變化緩慢。當然，如果您對更遠的未來進行預測，此基線的效果就不那麼好了。
-
-#### 將輸入傳送到輸出
-```Python
+```py 
 class Baseline(tf.keras.Model):
   def __init__(self, label_index=None):
     super().__init__()
@@ -545,9 +545,9 @@ class Baseline(tf.keras.Model):
     result = inputs[:, :, self.label_index]
     return result[:, :, tf.newaxis]
 ```
+实例化并评估此模型：
+```py
 
-#### 實例化並評估此模型：
-```PY
 baseline = Baseline(label_index=column_indices['T (degC)'])
 
 baseline.compile(loss=tf.keras.losses.MeanSquaredError(),
@@ -557,6 +557,9 @@ val_performance = {}
 performance = {}
 val_performance['Baseline'] = baseline.evaluate(single_step_window.val)
 performance['Baseline'] = baseline.evaluate(single_step_window.test, verbose=0)
+```
+```
+439/439 ━━━━━━━━━━━━━━━━━━━━ 2s 3ms/step - loss: 0.0133 - mean_absolute_error: 0.0790
 ```
 
 上面的代碼列印了一些性能指標，但這些指標並沒有使您對模型的運行情況有所瞭解。
@@ -571,17 +574,21 @@ wide_window = WindowGenerator(
 
 wide_window
 ```
-此擴展視窗可以直接傳遞到相同的 模型，而無需修改任何代碼。 能做到這一點是因為輸入和標籤具有相同數量的時間步驟，並且基線只是將輸入轉發至輸出：`baseline`
-
+![圖片](pic/025.png)
+此擴展視窗可以直接傳遞到相同的`baseline`模型，而無需修改任何代碼。 能做到這一點是因為輸入和標籤具有相同數量的時間步驟，並且基線只是將輸入轉發至輸出：
+![圖片](pic/026.png)
 ```PY
 print('Input shape:', wide_window.example[0].shape)
 print('Output shape:', baseline(wide_window.example[0]).shape)
 ```
+![圖片](pic/027.png)
+
 通過繪製基線模型的預測值，可以注意到只是標籤向右移動了 1 小時：
+
 ```PY
 wide_window.plot(baseline)
 ```
-
+![圖片](pic/028.png)
 在上面三個樣本的繪圖中，單步模型運行了 24 個小時。 這需要一些解釋：
 
 - 藍色的 `Inputs`行顯示每個時間步驟的輸入溫度。 模型會接收所有特徵，而該繪圖僅顯示溫度。
@@ -589,7 +596,7 @@ wide_window.plot(baseline)
 - 橙色的 `Predictions`叉是模型針對每個輸出時間步驟的預測。 如果模型能夠進行完美預測，則預測值將直接落在`Labels` 上。
 ### 線性模型
 可以應用於此任務的最簡單的**可訓練**模型是在輸入和輸出之間插入線性轉換。 在這種情況下，時間步驟的輸出僅取決於該步驟：
-
+![圖片](pic/029.png)
 没有设置 `activation` 的` tf.keras.layers.Dense` 层是线性模型。层仅会将数据的最后一个轴从 `(batch, time, inputs)` 转换为` (batch, time, units)`；它会单独应用于 `batch `和` time `轴的每个条目。
 ```py
 linear = tf.keras.Sequential([
@@ -600,6 +607,8 @@ linear = tf.keras.Sequential([
 print('Input shape:', single_step_window.example[0].shape)
 print('Output shape:', linear(single_step_window.example[0]).shape)
 ```
+![圖片](pic/030.png)
+
 本教程训练许多模型，因此将训练过程打包到一个函数中：
 ```py
 MAX_EPOCHS = 20
@@ -619,21 +628,61 @@ def compile_and_fit(model, window, patience=2):
   return history
 ```
 训练模型并评估其性能：
-```
+```py
 history = compile_and_fit(linear, single_step_window)
 
 val_performance['Linear'] = linear.evaluate(single_step_window.val)
 performance['Linear'] = linear.evaluate(single_step_window.test, verbose=0)
 ```
+```
+Epoch 1/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 4ms/step - loss: 0.4903 - mean_absolute_error: 0.4637 - val_loss: 0.0191 - val_mean_absolute_error: 0.1003
+Epoch 2/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 12s 5ms/step - loss: 0.0146 - mean_absolute_error: 0.0894 - val_loss: 0.0096 - val_mean_absolute_error: 0.0727
+Epoch 3/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0097 - mean_absolute_error: 0.0724 - val_loss: 0.0092 - val_mean_absolute_error: 0.0705
+Epoch 4/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 4ms/step - loss: 0.0093 - mean_absolute_error: 0.0708 - val_loss: 0.0089 - val_mean_absolute_error: 0.0693
+Epoch 5/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 5ms/step - loss: 0.0093 - mean_absolute_error: 0.0705 - val_loss: 0.0090 - val_mean_absolute_error: 0.0696
+Epoch 6/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0092 - mean_absolute_error: 0.0702 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 7/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 4ms/step - loss: 0.0092 - mean_absolute_error: 0.0700 - val_loss: 0.0088 - val_mean_absolute_error: 0.0691
+Epoch 8/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 9s 6ms/step - loss: 0.0092 - mean_absolute_error: 0.0701 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 9/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0699 - val_loss: 0.0088 - val_mean_absolute_error: 0.0687
+Epoch 10/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0698 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 11/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0698 - val_loss: 0.0087 - val_mean_absolute_error: 0.0685
+Epoch 12/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 10s 4ms/step - loss: 0.0091 - mean_absolute_error: 0.0697 - val_loss: 0.0087 - val_mean_absolute_error: 0.0678
+Epoch 13/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 14/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 8s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0682
+Epoch 15/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 7s 5ms/step - loss: 0.0091 - mean_absolute_error: 0.0696 - val_loss: 0.0087 - val_mean_absolute_error: 0.0684
+439/439 ━━━━━━━━━━━━━━━━━━━━ 1s 3ms/step - loss: 0.0087 - mean_absolute_error: 0.0684
+```
 与 `baseline` 模型类似，可以在宽度窗口的批次上调用线性模型。使用这种方式，模型会在连续的时间步骤上进行一系列独立预测。`time` 轴的作用类似于另一个 `batch` 轴。在每个时间步骤上，预测之间没有交互。
+
+![圖片](pic/031.png)
+
 ```py
 print('Input shape:', wide_window.example[0].shape)
 print('Output shape:', baseline(wide_window.example[0]).shape)
 ```
+![圖片](pic/032.png)
+
 下面是 `wide_widow `上它的样本预测绘图。请注意，在许多情况下，预测值显然比仅返回输入温度更好，但在某些情况下则会更差：
 ```py
 wide_window.plot(linear)
 ```
+![圖片](pic/033.png)
+
 线性模型的优点之一是它们相对易于解释。您可以拉取层的权重，并呈现分配给每个输入的权重：
 ```py
 plt.bar(x = range(len(train_df.columns)),
@@ -642,6 +691,8 @@ axis = plt.gca()
 axis.set_xticks(range(len(train_df.columns)))
 _ = axis.set_xticklabels(train_df.columns, rotation=90)
 ```
+![圖片](pic/034.png)
+
 有时模型甚至不会将大多数权重放在输入` T (degC)` 上。这是随机初始化的风险之一。
 ### 密集
 在应用实际运算多个时间步骤的模型之前，值得研究一下更深、更强大的单输入步骤模型的性能。
@@ -659,8 +710,24 @@ history = compile_and_fit(dense, single_step_window)
 val_performance['Dense'] = dense.evaluate(single_step_window.val)
 performance['Dense'] = dense.evaluate(single_step_window.test, verbose=0)
 ```
+```
+Epoch 1/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 12s 7ms/step - loss: 0.0306 - mean_absolute_error: 0.1047 - val_loss: 0.0082 - val_mean_absolute_error: 0.0669
+Epoch 2/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 19s 6ms/step - loss: 0.0080 - mean_absolute_error: 0.0646 - val_loss: 0.0076 - val_mean_absolute_error: 0.0633
+Epoch 3/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 6ms/step - loss: 0.0075 - mean_absolute_error: 0.0623 - val_loss: 0.0070 - val_mean_absolute_error: 0.0601
+Epoch 4/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 11s 7ms/step - loss: 0.0073 - mean_absolute_error: 0.0614 - val_loss: 0.0072 - val_mean_absolute_error: 0.0605
+Epoch 5/20
+1534/1534 ━━━━━━━━━━━━━━━━━━━━ 9s 6ms/step - loss: 0.0071 - mean_absolute_error: 0.0600 - val_loss: 0.0073 - val_mean_absolute_error: 0.0610
+439/439 ━━━━━━━━━━━━━━━━━━━━ 1s 3ms/step - loss: 0.0071 - mean_absolute_error: 0.0609
+```
+
 ### 多步密集
 单时间步骤模型没有其输入的当前值的上下文。它看不到输入特征随时间变化的情况。要解决此问题，模型在进行预测时需要访问多个时间步骤：
+
+![圖片](pic/035.png)
 
 `baseline`、`linear` 和 `dense` 模型会单独处理每个时间步骤。在这里，模型将接受多个时间步骤作为输入，以生成单个输出。
 
@@ -679,10 +746,14 @@ conv_window = WindowGenerator(
 conv_window
 ```
 
+![圖片](pic/036.png)
+
 ```py
 conv_window.plot()
 plt.title("Given 3 hours of inputs, predict 1 hour into the future.")
 ```
+
+![圖片](pic/037.png)
 
 您可以通过添加` tf.keras.layers.Flatten` 作为模型的第一层，在多输入步骤窗口上训练` dense` 模型：
 ```py
@@ -701,6 +772,8 @@ multi_step_dense = tf.keras.Sequential([
 print('Input shape:', conv_window.example[0].shape)
 print('Output shape:', multi_step_dense(conv_window.example[0]).shape)
 ```
+![圖片](pic/038.png)
+
 ```py
 history = compile_and_fit(multi_step_dense, conv_window)
 
@@ -708,9 +781,15 @@ IPython.display.clear_output()
 val_performance['Multi step dense'] = multi_step_dense.evaluate(conv_window.val)
 performance['Multi step dense'] = multi_step_dense.evaluate(conv_window.test, verbose=0)
 ```
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 2s 3ms/step - loss: 0.0071 - mean_absolute_error: 0.0596
+```
+
 ```py
 conv_window.plot(multi_step_dense)
 ```
+![圖片](pic/039.png)
+
 此方法的主要缺点是，生成的模型只能在具有此形状的输入窗口上执行。
 ```py
 print('Input shape:', wide_window.example[0].shape)
@@ -719,6 +798,8 @@ try:
 except Exception as e:
   print(f'\n{type(e).__name__}:{e}')
 ```
+![圖片](pic/040.png)
+
 下一部分中的卷积模型将解决这个问题。
 ### 卷积神经网络
 卷积层 `(tf.keras.layers.Conv1D)` 也需要多个时间步骤作为每个预测的输入。
@@ -743,6 +824,8 @@ print("Conv model on `conv_window`")
 print('Input shape:', conv_window.example[0].shape)
 print('Output shape:', conv_model(conv_window.example[0]).shape)
 ```
+![圖片](pic/041.png)
+
 在 `conv_window` 上训练和评估上述模型，它应该提供与 `multi_step_dense` 模型类似的性能。
 ```py
 history = compile_and_fit(conv_model, conv_window)
@@ -751,8 +834,13 @@ IPython.display.clear_output()
 val_performance['Conv'] = conv_model.evaluate(conv_window.val)
 performance['Conv'] = conv_model.evaluate(conv_window.test, verbose=0)
 ```
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 2s 3ms/step - loss: 0.0067 - mean_absolute_error: 0.0583
+```
+
 此 `conv_model` 和 `multi_step_dense` 模型的区别在于，`conv_model` 可以在任意长度的输入上运行。卷积层应用于输入的滑动窗口：
 
+![圖片](pic/042.png)
 
 如果在较宽的输入上运行此模型，它将生成较宽的输出：
 ```py
@@ -762,6 +850,9 @@ print('Labels shape:', wide_window.example[1].shape)
 print('Output shape:', conv_model(wide_window.example[0]).shape)
 
 ```
+
+![圖片](pic/043.png)
+
 请注意，输出比输入短。要进行训练或绘图，需要标签和预测具有相同长度。因此，构建 `WindowGenerator` 以使用一些额外输入时间步骤生成宽窗口，从而使标签和预测长度匹配：
 ```py 
 LABEL_WIDTH = 24
@@ -774,16 +865,22 @@ wide_conv_window = WindowGenerator(
 
 wide_conv_window
 ```
+![圖片](pic/044.png)
+
 ```py
 print("Wide conv window")
 print('Input shape:', wide_conv_window.example[0].shape)
 print('Labels shape:', wide_conv_window.example[1].shape)
 print('Output shape:', conv_model(wide_conv_window.example[0]).shape)
 ```
+![圖片](pic/045.png)
+
 现在，您可以在更宽的窗口上绘制模型的预测。请注意第一个预测之前的 3 个输入时间步骤。这里的每个预测都基于之前的 3 个时间步骤：
 ```py
 wide_conv_window.plot(conv_model)
 ```
+![圖片](pic/046.png)
+
 ### 循环神经网络
 
 循环神经网络 (RNN) 是一种非常适合时间序列数据的神经网络。RNN 分步处理时间序列，从时间步骤到时间步骤地维护内部状态。
@@ -799,6 +896,9 @@ lstm 预热并进行单一预测
 1. 如果为 True，层将为每个输入返回一个输出。这对以下情况十分有用：
     - 堆叠 RNN 层。
     - 同时在多个时间步骤上训练模型。
+
+![圖片](pic/047.png)
+
 
 ```py
 lstm_model = tf.keras.models.Sequential([
@@ -817,6 +917,8 @@ print('Input shape:', wide_window.example[0].shape)
 print('Output shape:', lstm_model(wide_window.example[0]).shape)
 ```
 
+![圖片](pic/048.png)
+
 ```py 
 
 history = compile_and_fit(lstm_model, wide_window)
@@ -826,9 +928,15 @@ val_performance['LSTM'] = lstm_model.evaluate(wide_window.val)
 performance['LSTM'] = lstm_model.evaluate(wide_window.test, verbose=0)
 ```
 
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 3s 6ms/step - loss: 0.0056 - mean_absolute_error: 0.0518
+```
+
 ```py
 wide_window.plot(lstm_model)
 ```
+![圖片](pic/049.png)
+
 ### 性能
 使用此数据集时，通常每个模型的性能都比之前的模型稍好一些：
 ```py
@@ -847,10 +955,14 @@ plt.xticks(ticks=x, labels=performance.keys(),
 _ = plt.legend()
 ```
 
+![圖片](pic/050.png)
+
 ```py 
 for name, value in performance.items():
   print(f'{name:12s}: {value[1]:0.4f}')
 ```
+
+![圖片](pic/051.png)
 
 ## 多输出模型
 
@@ -872,6 +984,8 @@ for example_inputs, example_labels in wide_window.train.take(1):
 
 ```
 
+![圖片](pic/052.png)
+
 请注意，上面标签的 `features `轴现在具有与输入相同的深度，而不是 1。
 
 ### 基线
@@ -887,6 +1001,10 @@ performance = {}
 val_performance['Baseline'] = baseline.evaluate(wide_window.val)
 performance['Baseline'] = baseline.evaluate(wide_window.test, verbose=0)
 ```
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 2s 4ms/step - loss: 0.0883 - mean_absolute_error: 0.1587
+```
+
 ### 密集
 ```py
 dense = tf.keras.Sequential([
@@ -901,6 +1019,10 @@ dense = tf.keras.Sequential([
     tf.keras.layers.Dense(units=64, activation='relu'),
     tf.keras.layers.Dense(units=num_features)
 ])
+```
+
+```
+439/439 ━━━━━━━━━━━━━━━━━━━━ 1s 3ms/step - loss: 0.0685 - mean_absolute_error: 0.1328
 ```
 ### RNN
 ```py
@@ -923,7 +1045,12 @@ performance['LSTM'] = lstm_model.evaluate( wide_window.test, verbose=0)
 
 print()
 ```
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 3s 7ms/step - loss: 0.0620 - mean_absolute_error: 0.1207
 
+CPU times: user 9min 29s, sys: 38.9 s, total: 10min 8s
+Wall time: 9min 21s
+```
 ### 高级：残差连接
 
 先前的 `Baseline` 模型利用了以下事实：序列在时间步骤之间不会剧烈变化。到目前为止，本教程中训练的每个模型都进行了随机初始化，然后必须学习输出相较上一个时间步骤改变较小这一知识。
@@ -934,7 +1061,7 @@ print()
 
 这就是利用“改变应该较小”这一知识的方式。
 
-[圖片]()
+![圖片](pic/053.png)
 
 本质上，这将初始化模型以匹配 Baseline。对于此任务，它可以帮助模型更快收敛，且性能稍好。
 
@@ -975,6 +1102,13 @@ val_performance['Residual LSTM'] = residual_lstm.evaluate(wide_window.val)
 performance['Residual LSTM'] = residual_lstm.evaluate(wide_window.test, verbose=0)
 print()
 ```
+```
+438/438 ━━━━━━━━━━━━━━━━━━━━ 4s 9ms/step - loss: 0.0621 - mean_absolute_error: 0.1177
+
+CPU times: user 3min 10s, sys: 13.4 s, total: 3min 24s
+Wall time: 3min 6s
+```
+
 ### 性能 
 以下是这些多输出模型的整体性能。
 ```py 
@@ -993,12 +1127,13 @@ plt.xticks(ticks=x, labels=performance.keys(),
 plt.ylabel('MAE (average over all outputs)')
 _ = plt.legend()
 ```
-[圖片]
+![圖片](pic/054.png)
 
 ```py
 for name, value in performance.items():
   print(f'{name:15s}: {value[1]:0.4f}')
 ```
+![圖片](pic/055.png)
 以上性能是所有模型输出的平均值。
 
 ## 多步模型
@@ -1026,9 +1161,12 @@ multi_window = WindowGenerator(input_width=24,
 multi_window.plot()
 multi_window
 ```
-
+![圖片](pic/056.png)
 ### 基线
 此任务的一个简单基线是针对所需数量的输出时间步骤重复上一个输入时间步骤：
+
+![圖片](pic/057.png)
+
 ```py 
 class MultiStepLastBaseline(tf.keras.Model):
   def call(self, inputs):
@@ -1046,8 +1184,11 @@ multi_performance['Last'] = last_baseline.evaluate(multi_window.test, verbose=0)
 multi_window.plot(last_baseline)
 ```
 
+![圖片](pic/058.png)
+
 由于此任务是在给定过去 24 小时的情况下预测未来 24 小时，另一种简单的方式是重复前一天，假设明天是类似的：
 
+![圖片](pic/059.png)
 
 ```py 
 class RepeatBaseline(tf.keras.Model):
@@ -1063,6 +1204,8 @@ multi_performance['Repeat'] = repeat_baseline.evaluate(multi_window.test, verbos
 multi_window.plot(repeat_baseline)
 ```
 
+![圖片](pic/060.png)
+
 ### 单次模型
 
 解决此问题的一种高级方法是使用“单次”模型，该模型可以在单个步骤中对整个序列进行预测。
@@ -1072,6 +1215,8 @@ multi_window.plot(repeat_baseline)
 ### 线性
 
 基于最后输入时间步骤的简单线性模型优于任何基线，但能力不足。该模型需要根据线性投影的单个输入时间步骤来预测 `OUTPUT_STEPS` 个时间步骤。它只能捕获行为的低维度切片，可能主要基于一天中的时间和一年中的时间。
+
+![圖片](pic/061.png)
 
 ```py 
 multi_linear_model = tf.keras.Sequential([
@@ -1092,6 +1237,8 @@ multi_val_performance['Linear'] = multi_linear_model.evaluate(multi_window.val)
 multi_performance['Linear'] = multi_linear_model.evaluate(multi_window.test, verbose=0)
 multi_window.plot(multi_linear_model)
 ```
+
+![圖片](pic/062.png)
 
 ### 密集
 
@@ -1118,9 +1265,13 @@ multi_val_performance['Dense'] = multi_dense_model.evaluate(multi_window.val)
 multi_performance['Dense'] = multi_dense_model.evaluate(multi_window.test, verbose=0)
 multi_window.plot(multi_dense_model)
 ```
+![圖片](pic/063.png)
 
 ### CNN
 卷积模型基于固定宽度的历史记录进行预测，可能比密集模型的性能更好，因为它可以看到随时间变化的情况：
+
+![圖片](pic/064.png)
+
 ```py 
 CONV_WIDTH = 3
 multi_conv_model = tf.keras.Sequential([
@@ -1143,11 +1294,15 @@ multi_val_performance['Conv'] = multi_conv_model.evaluate(multi_window.val)
 multi_performance['Conv'] = multi_conv_model.evaluate(multi_window.test, verbose=0)
 multi_window.plot(multi_conv_model)
 ```
+![圖片](pic/065.png)
+
 ### RNN
 
 如果循环模型与模型所做的预测相关，则可以学习使用较长的输入历史记录。在这里，模型将积累 24 小时的内部状态，然后对接下来的 24 小时进行单次预测。
 
 在此单次格式中，LSTM 只需要在最后一个时间步骤上生成输出，因此在 `tf.keras.layers.LSTM `中设置 `return_sequences=False`。
+
+![圖片](pic/066.png)
 
 ```py 
 multi_lstm_model = tf.keras.Sequential([
@@ -1169,6 +1324,8 @@ multi_val_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.val)
 multi_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.test, verbose=0)
 multi_window.plot(multi_lstm_model)
 ```
+![圖片](pic/067.png)
+
 ### 高级：自回归模型
 上述模型均在单个步骤中预测整个输出序列。
 
@@ -1177,6 +1334,8 @@ multi_window.plot(multi_lstm_model)
 此类模型的一个明显优势是可以将其设置为生成长度不同的输出。
 
 您可以采用本教程前半部分中训练的任意一个单步多输出模型，并在自回归反馈循环中运行，但是在这里，您将重点关注经过显式训练的模型。
+
+![圖片](pic/068.png)
 
 ### RNN
 
@@ -1223,6 +1382,8 @@ prediction, state = feedback_model.warmup(multi_window.example[0])
 prediction.shape
 ```
 
+![圖片](pic/069.png)
+
 有了 `RNN` 的状态和初始预测，您现在可以继续迭代模型，并在每一步将预测作为输入反馈给模型。
 
 收集输出预测的最简单方式是使用 Python 列表，并在循环后使用 [tf.stack](https://tensorflow.google.cn/api_docs/python/tf/stack?hl=zh-cn)。
@@ -1264,6 +1425,9 @@ FeedBack.call = call
 ```py
 print('Output shape (batch, time, features): ', feedback_model(multi_window.example[0]).shape)
 ```
+
+![圖片](pic/070.png)
+
 现在，训练模型：
 ```py 
 history = compile_and_fit(feedback_model, multi_window)
@@ -1274,6 +1438,9 @@ multi_val_performance['AR LSTM'] = feedback_model.evaluate(multi_window.val)
 multi_performance['AR LSTM'] = feedback_model.evaluate(multi_window.test, verbose=0)
 multi_window.plot(feedback_model)
 ```
+
+![圖片](pic/071.png)
+
 ### 性能
 在这个问题上，作为模型复杂性的函数，返回值在明显递减。
 ```py 
@@ -1293,12 +1460,16 @@ plt.ylabel(f'MAE (average over all times and outputs)')
 _ = plt.legend()
 ```
 
+![圖片](pic/072.png)
+
 本教程前半部分的多输出模型的指标显示了所有输出特征的平均性能。这些性能类似，但在输出时间步骤上也进行了平均。
 
 ```py 
 for name, value in multi_performance.items():
   print(f'{name:8s}: {value[1]:0.4f}')
 ```
+
+![圖片](pic/073.png)
 
 从密集模型到卷积模型和循环模型，所获得的增益只有百分之几（如果有的话），而自回归模型的表现显然更差。因此，在**这个**问题上使用这些更复杂的方法可能并不值得，但如果不尝试就无从知晓，而且这些模型可能会对**您的**问题有所帮助。
 
