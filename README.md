@@ -1,7 +1,7 @@
-# AI Final Project
+# AI Final Project  11024102 况旻諭
 # 使用 TensorFlow 進行時間序列預測
 
-11024102 况旻諭
+
 
 本教程是使用 TensorFlow 進行時間序列預測的簡介。它構建了幾種不同樣式的模型，包括卷積神經網路（CNN）和循環神經網路（RNN）。
 
