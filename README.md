@@ -1483,3 +1483,40 @@ for name, value in multi_performance.items():
 - [Python 深度学习](https://www.manning.com/books/deep-learning-with-python)第 6 章。
 - [Udacity 的 Intro to TensorFlow for deep learning](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187) 第 8 课，包括[练习笔记本](https://github.com/tensorflow/examples/tree/master/courses/udacity_intro_to_tensorflow_for_deep_learning)。
 还要记住，您可以在 TensorFlow 中实现任何[经典时间序列模型](https://otexts.com/fpp2/index.html)，本教程仅重点介绍了 TensorFlow 的内置功能。
+
+
+##問題解決辦法
+原先此程式碼會有問題
+```py
+x = np.arange(len(multi_performance))
+width = 0.3
+
+metric_name = 'mean_absolute_error'
+metric_index = lstm_model.metrics_names.index('mean_absolute_error')
+val_mae = [v[metric_index] for v in multi_val_performance.values()]
+test_mae = [v[metric_index] for v in multi_performance.values()]
+
+plt.bar(x - 0.17, val_mae, width, label='Validation')
+plt.bar(x + 0.17, test_mae, width, label='Test')
+plt.xticks(ticks=x, labels=multi_performance.keys(),
+           rotation=45)
+plt.ylabel(f'MAE (average over all times and outputs)')
+_ = plt.legend()
+```
+是新版已不提供原作者那時的作法了，如要用就要調降版本（這個做法不建議），所以我們將程式碼改為即可使用
+```py
+x = np.arange(len(multi_performance))
+width = 0.3
+
+metric_name = 'compile_metrics'
+metric_index = lstm_model.metrics_names.index('metric_name')
+val_mae = [v[metric_index] for v in multi_val_performance.values()]
+test_mae = [v[metric_index] for v in multi_performance.values()]
+
+plt.bar(x - 0.17, val_mae, width, label='Validation')
+plt.bar(x + 0.17, test_mae, width, label='Test')
+plt.xticks(ticks=x, labels=multi_performance.keys(),
+           rotation=45)
+plt.ylabel(f'MAE (average over all times and outputs)')
+_ = plt.legend()
+```
